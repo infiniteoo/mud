@@ -99,6 +99,37 @@ app.prepare().then(() => {
     res.status(200).send(user);
   });
 
+  // List Characters
+  expressApp.get("/api/characters", async (req, res) => {
+    const { user_id } = req.query;
+    const { data, error } = await supabaseAdmin
+      .from("characters")
+      .select("*")
+      .eq("user_id", user_id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(200).json(data);
+  });
+
+  // Create Character
+  expressApp.post("/api/characters", async (req, res) => {
+    const { name, user_id } = req.body;
+    const { data, error } = await supabaseAdmin
+      .from("characters")
+      .insert([{ name, user_id }]);
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(200).json(data);
+  });
+
+  // Delete Character
+  expressApp.delete("/api/characters/:id", async (req, res) => {
+    const { id } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from("characters")
+      .delete()
+      .eq("id", id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(200).json(data);
+  });
   io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
 

@@ -24,7 +24,7 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
+checkDatabase.js
 # local env files
 .env*.local
 

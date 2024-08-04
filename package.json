@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev\" \"nodemon server.js\"",
+    "dev": "concurrently \"next dev\" \"nodemon --legacy-watch server.js\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -23,6 +23,7 @@
     "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
+    "chokidar": "^3.6.0",
     "concurrently": "^8.2.2",
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
