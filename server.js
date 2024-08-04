@@ -1,16 +1,22 @@
+// server.js
+
 const express = require("express");
 const next = require("next");
 const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
+const bcrypt = require("bcrypt");
+const { supabase } = require("./db");
 
 const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
+const saltRounds = 10;
+
 app.prepare().then(() => {
   const expressApp = express();
-
+  expressApp.use(express.json());
   expressApp.use(
     cors({
       origin: "http://localhost:3000",
@@ -27,76 +33,79 @@ app.prepare().then(() => {
     },
   });
 
-  let players = {};
-  let rooms = {
-    start: {
-      description: "You are in a small room. There is a door to the north.",
-      exits: { north: "northRoom" },
-      players: [], // Track players in this room
-    },
-    northRoom: {
-      description: "You are in a northern room. There is a door to the south.",
-      exits: { south: "start" },
-      players: [], // Track players in this room
-    },
-  };
+  // Account creation
+  expressApp.post("/api/signup", async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).send("Email and password are required.");
+    }
+
+    const { data: existingUser, error: existingUserError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .single();
+
+    if (existingUserError && existingUserError.code !== "PGRST116") {
+      return res.status(500).send(existingUserError.message);
+    }
+
+    if (existingUser) {
+      return res.status(400).send("Email is already registered.");
+    }
+
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+    const { data, error } = await supabase
+      .from("users")
+      .insert({ email, password_hash: passwordHash })
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).send(error.message);
+    }
+
+    res.status(201).send(data);
+  });
+
+  // Login
+  expressApp.post("/api/login", async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).send("Email and password are required.");
+    }
+
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .single();
+
+    if (error) {
+      return res.status(500).send(error.message);
+    }
+
+    if (!user) {
+      return res.status(400).send("Invalid email or password.");
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    if (!passwordMatch) {
+      return res.status(400).send("Invalid email or password.");
+    }
+
+    // For simplicity, we're not using JWT tokens or sessions in this example.
+    // You can extend this logic to include session management.
+    res.status(200).send(user);
+  });
 
   io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
-    players[socket.id] = { location: "start" };
-    rooms["start"].players.push(socket.id);
 
-    socket.emit("message", rooms["start"].description);
-
-    socket.on("command", (data) => {
-      console.log("Received data:", data);
-      console.log(`Received data: ${JSON.stringify(data)}`);
-      if (!data || typeof data.command !== "string") {
-        socket.emit("message", "Invalid command.");
-        return;
-      }
-
-      const { command } = data;
-      console.log(`Received command from ${socket.id}: ${command}`);
-      const player = players[socket.id];
-
-      if (command.startsWith("move")) {
-        const direction = command.split(" ")[1];
-        const currentRoom = rooms[player.location];
-        if (currentRoom.exits[direction]) {
-          // Remove player from current room
-          currentRoom.players = currentRoom.players.filter(
-            (id) => id !== socket.id
-          );
-
-          // Update player's location
-          player.location = currentRoom.exits[direction];
-          const newRoom = rooms[player.location];
-
-          // Add player to new room
-          newRoom.players.push(socket.id);
-          socket.emit("message", newRoom.description);
-        } else {
-          socket.emit("message", "You can't go that way.");
-        }
-      } else if (command.startsWith("/say")) {
-        const message = command.slice(5).trim(); // Remove "/say " prefix and trim
-        if (message) {
-          const currentRoom = rooms[player.location];
-          currentRoom.players.forEach((id) => {
-            io.to(id).emit("message", `${socket.id} says: ${message}`);
-          });
-        }
-      }
-    });
+    // Handle other socket events...
 
     socket.on("disconnect", () => {
       console.log("A user disconnected:", socket.id);
-      const playerLocation = players[socket.id].location;
-      rooms[playerLocation].players = rooms[playerLocation].players.filter(
-        (id) => id !== socket.id
-      );
-      delete players[socket.id];
     });
   });
 
